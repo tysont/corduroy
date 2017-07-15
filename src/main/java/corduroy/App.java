@@ -11,7 +11,6 @@ public class App
      */
     public static void main( String[] args )
     {
-        Node node = new Node("127.0.0.1:8080");
-        System.out.println(node.getHash(1));
+        System.out.println("Hello Corduroy.");
     }
 }
