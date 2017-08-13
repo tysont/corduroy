@@ -1,5 +1,7 @@
 package corduroy;
 
+import lombok.Getter;
+
 import java.io.Serializable;
 import java.lang.reflect.Type;
 
@@ -9,16 +11,16 @@ import java.lang.reflect.Type;
 public class Message implements Serializable {
 
     /**
-     * Sets the payload that the message wraps.
-     * @param o The payload.
+     * Creates a message by providing a payload.
+     * @param payload The payload.
      */
-    public void setPayload(Serializable o) {
-        payload = o;
-        type = o.getClass();
+    public Message(Serializable payload) {
+        this.payload = payload;
+        type = payload.getClass();
     }
 
     /**
-     * Gets the payload that the message wraps.
+     * Gets the payload that the requestMessage wraps.
      * @param <T> The type to cast the payload into.
      * @return The payload.
      */
@@ -26,7 +28,14 @@ public class Message implements Serializable {
         return (T) payload;
     }
 
+    /**
+     * The type of the message payload.
+     */
+    @Getter
     private Type type;
 
+    /**
+     * The message payload.
+     */
     private Object payload;
 }

@@ -1,5 +1,6 @@
 package corduroy;
 
+import lombok.Getter;
 import lombok.SneakyThrows;
 
 import java.io.ObjectInputStream;
@@ -8,6 +9,10 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
+import java.util.HashSet;
+import java.util.Hashtable;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * Node represents a single running instance where data can be stored and retrieved.
@@ -16,12 +21,24 @@ public class Node implements Runnable {
 
     /**
      * Creates a node by passing in an {@link InetAddress} and an {@link int} that represents a Port.
-     * @param port
+     * @param port The port that the node will listen on.
      */
     @SneakyThrows
     public Node(int port) {
         this.inetAddress = InetAddress.getLocalHost();
         this.port = port;
+
+        localTable = new Hashtable<String, Object>();
+        requestHandlerThreads = new HashSet<Thread>();
+        fingerTable = new Hashtable<Integer, String>();
+    }
+
+    /**
+     * Initialize the node by building its finger table.
+     * @param address The address of another node in the ring, to seed initialization.
+     */
+    public void initialize(String address) {
+        fingerTable.put(1, address);
     }
 
     /**
@@ -48,15 +65,15 @@ public class Node implements Runnable {
                 Socket clientSocket = listenSocket.accept();
                 System.out.println("Socket established...");
 
-                ObjectOutputStream outToClient = new ObjectOutputStream(clientSocket.getOutputStream());
-                ObjectInputStream inFromClient = new ObjectInputStream(clientSocket.getInputStream());
+                ObjectInputStream requestStream = new ObjectInputStream(clientSocket.getInputStream());
+                Message requestMessage = (Message) requestStream.readObject();
 
-                Message inMessage = (Message) inFromClient.readObject();
-                String text = (String)inMessage.getPayload();
+                ObjectOutputStream responseStream = new ObjectOutputStream(clientSocket.getOutputStream());
+                Handler requestHandler = new Handler(requestMessage, responseStream, this);
 
-                Message outMessage = new Message();
-                outMessage.setPayload(text.toUpperCase());
-                outToClient.writeObject(outMessage);
+                Thread t = new Thread(requestHandler);
+                requestHandlerThreads.add(t);
+                t.start();
 
             }
             catch (SocketException ex) {
@@ -77,26 +94,25 @@ public class Node implements Runnable {
     }
 
     /**
-     * Sends a message to another node with the given address.
-     * @param outMessage The outbound message to send.
-     * @param address The address to send the message to.
-     * @return The inbound message that is received in response.
+     * Sends a requestMessage to another node with the given address.
+     * @param requestMessage The outbound requestMessage to send.
+     * @param address The address to send the requestMessage to.
+     * @return The inbound requestMessage that is received in response.
      */
     @SneakyThrows
-    public static Message send(Message outMessage, String address) {
+    public static Message send(Message requestMessage, String address) {
 
         InetAddress host = Utility.getInetAddress(address);
         int port = Utility.getPort(address);
 
         Socket clientSocket = new Socket(host, port);
-        ObjectOutputStream outToServer = new ObjectOutputStream(clientSocket.getOutputStream());
-        ObjectInputStream inFromServer = new ObjectInputStream(clientSocket.getInputStream());
+        ObjectOutputStream requestStream = new ObjectOutputStream(clientSocket.getOutputStream());
+        requestStream.writeObject(requestMessage);
 
-        outToServer.writeObject(outMessage);
-
-        Message inMessage = (Message)inFromServer.readObject();
+        ObjectInputStream responseStream = new ObjectInputStream(clientSocket.getInputStream());
+        Message responseMessage = (Message)responseStream.readObject();
         clientSocket.close();
-        return inMessage;
+        return responseMessage;
     }
 
     /**
@@ -140,4 +156,22 @@ public class Node implements Runnable {
      * Whether the node is listening.
      */
     private boolean listening;
+
+    /**
+     * A finger table of nodes to forward the request to.
+     */
+    @Getter
+    private Map<Integer, String> fingerTable;
+
+    /**
+     * The local table of key/value pairs.
+     */
+    @Getter
+    private Map<String, Object> localTable;
+
+    /**
+     * A list of active request handler threads.
+     */
+    @Getter
+    private Set<Thread> requestHandlerThreads;
 }
