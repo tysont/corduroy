@@ -9,10 +9,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.SocketException;
-import java.util.HashSet;
-import java.util.Hashtable;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 
 /**
  * Node represents a single running instance where data can be stored and retrieved.
@@ -28,23 +25,25 @@ public class Node implements Runnable {
         this.inetAddress = InetAddress.getLocalHost();
         this.port = port;
 
-        localTable = new Hashtable<String, Object>();
-        requestHandlerThreads = new HashSet<Thread>();
-        fingerTable = new Hashtable<Integer, String>();
+        handlerThreads = new HashSet<Thread>();
+        nodeAddresses = new HashSet<String>();
+        nodeAddresses.add(getAddress());
     }
 
     /**
      * Initialize the node by building its finger table.
-     * @param address The address of another node in the ring, to seed initialization.
      */
-    public void initialize(String address) {
-        fingerTable.put(1, address);
+    public void discover(String address) {
+
+        nodeAddresses.add(address);
+        ping();
     }
 
     /**
      * Runs a node by calling listen so the node can be kicked off in a different thread.
      */
     public void run() {
+
         listen();
     }
 
@@ -67,14 +66,22 @@ public class Node implements Runnable {
 
                 ObjectInputStream requestStream = new ObjectInputStream(clientSocket.getInputStream());
                 Message requestMessage = (Message) requestStream.readObject();
+                getNodeAddresses().addAll(requestMessage.getHopAddresses());
 
                 ObjectOutputStream responseStream = new ObjectOutputStream(clientSocket.getOutputStream());
-                Handler requestHandler = new Handler(requestMessage, responseStream, this);
+                if (requestMessage.getHopAddresses().contains(getAddress())) {
 
-                Thread t = new Thread(requestHandler);
-                requestHandlerThreads.add(t);
-                t.start();
+                    responseStream.writeObject(requestMessage);
+                }
 
+                else {
+
+                    requestMessage.getHopAddresses().add(getAddress());
+                    Handler requestHandler = new Handler(requestMessage, responseStream, this);
+                    Thread t = new Thread(requestHandler);
+                    handlerThreads.add(t);
+                    t.start();
+                }
             }
             catch (SocketException ex) {
                 System.out.println(ex.getMessage());
@@ -100,19 +107,37 @@ public class Node implements Runnable {
      * @return The inbound requestMessage that is received in response.
      */
     @SneakyThrows
-    public static Message send(Message requestMessage, String address) {
+    public Message send(Message requestMessage, String address) {
 
         InetAddress host = Utility.getInetAddress(address);
         int port = Utility.getPort(address);
 
+        requestMessage.getHopAddresses().add(getAddress());
         Socket clientSocket = new Socket(host, port);
         ObjectOutputStream requestStream = new ObjectOutputStream(clientSocket.getOutputStream());
         requestStream.writeObject(requestMessage);
 
         ObjectInputStream responseStream = new ObjectInputStream(clientSocket.getInputStream());
         Message responseMessage = (Message)responseStream.readObject();
+        getNodeAddresses().addAll(responseMessage.getHopAddresses());
         clientSocket.close();
         return responseMessage;
+    }
+
+    /**
+     * Pings for a list of the addresses of all known nodes.
+     * @return A list of addresses of all known nodes.
+     */
+    public Set<String> ping() {
+
+        Message requestMessage = new Message(new Ping());
+        for (String requestAddress : getNodeAddresses()) {
+            if (!requestMessage.getHopAddresses().contains(requestAddress)) {
+                requestMessage = send(requestMessage, requestAddress);
+            }
+        }
+
+        return new HashSet(requestMessage.getHopAddresses());
     }
 
     /**
@@ -121,20 +146,6 @@ public class Node implements Runnable {
      */
     public String getAddress() {
         return Utility.getAddress(inetAddress, port);
-    }
-
-    /**
-     * Gets the hash value of the node with respect ot a specific ring number.
-     * @param ring The number of the ring.
-     * @return The hash value as a positive integer.
-     */
-    public int getHash(int ring) {
-        try {
-            return Utility.hash(getAddress(), ring);
-        }
-        catch (Exception ex) {
-            return -1;
-        }
     }
 
     /**
@@ -161,17 +172,11 @@ public class Node implements Runnable {
      * A finger table of nodes to forward the request to.
      */
     @Getter
-    private Map<Integer, String> fingerTable;
-
-    /**
-     * The local table of key/value pairs.
-     */
-    @Getter
-    private Map<String, Object> localTable;
+    private Set<String> nodeAddresses;
 
     /**
      * A list of active request handler threads.
      */
     @Getter
-    private Set<Thread> requestHandlerThreads;
+    private Set<Thread> handlerThreads;
 }

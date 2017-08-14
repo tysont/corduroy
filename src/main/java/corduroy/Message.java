@@ -4,6 +4,8 @@ import lombok.Getter;
 
 import java.io.Serializable;
 import java.lang.reflect.Type;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Message represents information that is passed from {@link Node} to Node.
@@ -17,6 +19,7 @@ public class Message implements Serializable {
     public Message(Serializable payload) {
         this.payload = payload;
         type = payload.getClass();
+        this.hopAddresses = new ArrayList<String>();
     }
 
     /**
@@ -38,4 +41,10 @@ public class Message implements Serializable {
      * The message payload.
      */
     private Object payload;
+
+    /**
+     * The list of known node addresses.
+     */
+    @Getter
+    private List<String> hopAddresses;
 }

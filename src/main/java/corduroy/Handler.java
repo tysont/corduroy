@@ -38,8 +38,8 @@ public class Handler implements Runnable {
             handleText();
         }
 
-        else if (requestMessage.getType() == ProbePayload.class) {
-            handleProbe();
+        else if (requestMessage.getType() == Ping.class) {
+            handlePing();
         }
 
         complete = true;
@@ -60,26 +60,18 @@ public class Handler implements Runnable {
     }
 
     /**
-     * Handles a probe response by broadcasting to the node finger table and returning known node addresses.
+     * Handles a ping response by broadcasting to the node finger table and returning known node addresses.
      */
     @SneakyThrows
-    public void handleProbe() {
+    public void handlePing() {
 
-        ProbePayload probePayload = requestMessage.getPayload();
-        if (!probePayload.getAddresses().contains(node.getAddress())) {
-
-            probePayload.getAddresses().add(node.getAddress());
-            for (String requestAddress : node.getFingerTable().values()) {
-                if (!probePayload.getAddresses().contains(requestAddress)) {
-
-                    Message responseMessage = Node.send(requestMessage, requestAddress);
-                    probePayload = responseMessage.getPayload();
-                }
+        for (String requestAddress : node.getNodeAddresses()) {
+            if (!requestMessage.getHopAddresses().contains(requestAddress)) {
+                requestMessage = node.send(requestMessage, requestAddress);
             }
         }
 
-        Message responseMessage = new Message(probePayload);
-        responseStream.writeObject(responseMessage);
+        responseStream.writeObject(requestMessage);
         responseStream.flush();
     }
 
