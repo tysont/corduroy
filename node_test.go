@@ -8,31 +8,32 @@ import (
 	"time"
 	"github.com/stretchr/testify/assert"
 	"strconv"
+	"net/url"
 )
 
-func TestNodeGet(t *testing.T) {
-	node := createStartTestNode()
+func TestNodeGetEntity(t *testing.T) {
+	node := createTestNode()
 	key := "foo"
 	payload := "bar"
 	entity := newTestObject("bar")
 	bytes, err := json.Marshal(entity)
 	assert.NoError(t, err)
 	value := string(bytes)
-	err = testPutEntity(node, key, value)
+	err = tryPutEntity(node, key, value)
 	node.store.Put("foo", value)
 
 	storedEntity := &testObject{}
-	err = testGetEntity(node, key, storedEntity)
+	err = tryGetEntity(node, key, storedEntity)
 	assert.NoError(t, err)
 	assert.Equal(t, payload, storedEntity.Payload)
 }
 
-func TestNodePut(t *testing.T) {
-	node := createStartTestNode()
+func TestNodePutEntity(t *testing.T) {
+	node := createTestNode()
 	key := "foo"
 	payload := "bar"
 	entity := newTestObject(payload)
-	err := testPutEntity(node, key, entity)
+	err := tryPutEntity(node, key, entity)
 	assert.NoError(t, err)
 	storedValue := node.store.Get(key)
 	storedBytes := []byte(storedValue)
@@ -42,20 +43,32 @@ func TestNodePut(t *testing.T) {
 	assert.Equal(t, payload, storedEntity.Payload)
 }
 
-func TestNodePutGet(t *testing.T) {
-	node := createStartTestNode()
+func TestNodePutGetEntity(t *testing.T) {
+	node := createTestNode()
 	key := "foo"
 	payload := "bar"
 	entity := newTestObject(payload)
-	err := testPutEntity(node, key, entity)
+	err := tryPutEntity(node, key, entity)
 	assert.NoError(t, err)
 	storedEntity := &testObject{}
-	err = testGetEntity(node, key, storedEntity)
+	err = tryGetEntity(node, key, storedEntity)
 	assert.NoError(t, err)
 	assert.Equal(t, payload, storedEntity.Payload)
 }
 
-func createStartTestNode() Node {
+func TestNodeRegisterNode(t *testing.T) {
+	n := createTestNode()
+	o := createTestNode()
+	id := url.QueryEscape(strconv.Itoa(o.ID))
+	address := url.QueryEscape(o.Address)
+	uri := "http://" + n.Address + n.RootPath + registerPath + "?" + idParam + "=" + id + "&" + addressParam + "=" + address
+	_, err := http.Get(uri)
+	assert.NoError(t, err)
+	a := n.nodes[o.ID]
+	assert.Equal(t, o.Address, a)
+}
+
+func createTestNode() Node {
 	store := NewMemoryStore()
 	node := NewNode(store)
 	port := getNextTestPort()
@@ -65,25 +78,7 @@ func createStartTestNode() Node {
 	return node
 }
 
-func testGetEntity(n Node, key string, entity interface{}) error {
-	uri := "http://" + n.Address + n.RootPath + "/" + key
-	response, err := http.Get(uri)
-	if err != nil {
-		return err
-	}
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	decoder := json.NewDecoder(response.Body)
-	err = decoder.Decode(entity)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func testPutEntity(n Node, key string, entity interface{}) error {
+func tryPutEntity(n Node, key string, entity interface{}) error {
 	b := new(bytes.Buffer)
 	encoder := json.NewEncoder(b)
 	err := encoder.Encode(entity)
@@ -91,8 +86,23 @@ func testPutEntity(n Node, key string, entity interface{}) error {
 		return err
 	}
 
-	uri := "http://" + n.Address + n.RootPath + "/" + key
+	uri := "http://" + n.Address + n.RootPath + entitiesPath + "/" + key
 	_, err = http.Post(uri, "application/json; charset=utf-8", b)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func tryGetEntity(n Node, key string, entity interface{}) error {
+	uri := "http://" + n.Address + n.RootPath + entitiesPath + "/" + key
+	response, err := http.Get(uri)
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	decoder := json.NewDecoder(response.Body)
+	err = decoder.Decode(entity)
 	if err != nil {
 		return err
 	}
