@@ -32,10 +32,8 @@ func TestGetLocalAddresses(t *testing.T) {
 func TestHash(t *testing.T) {
 	s := "ok computer"
 	i := hash(s)
-
 	i2 := hash(s)
 	assert.Equal(t, i, i2)
-
 	s3 := "nevermind"
 	i3 := hash(s3)
 	assert.NotEqual(t, i, i3)
