@@ -15,9 +15,9 @@ func TestNodePutGetEntity(t *testing.T) {
 	payload := "bar"
 	entity := newTestObject(payload)
 	b, err := json.Marshal(entity)
-	_, _, err = node.putEntityRemote(node.Address, key, string(b), []int{node.ID}, defaultHops)
+	_, _, err = node.putValueRemote(node.Address, key, string(b), []int{node.ID}, defaultHops)
 	assert.NoError(t, err)
-	_, body, err := node.getEntityRemote(node.Address, key, []int{node.ID}, defaultHops)
+	_, body, err := node.getValueRemote(node.Address, key, []int{node.ID}, defaultHops)
 	storedEntity := &testObject{}
 	err = json.Unmarshal([]byte(body), storedEntity)
 	assert.NoError(t, err)
@@ -27,7 +27,7 @@ func TestNodePutGetEntity(t *testing.T) {
 func TestNodeGetNotFound(t *testing.T) {
 	node := createTestNode()
 	key := "foo"
-	statusCode, body, err := node.getEntityRemote(node.Address, key, []int{node.ID}, defaultHops)
+	statusCode, body, err := node.getValueRemote(node.Address, key, []int{node.ID}, defaultHops)
 	assert.NoError(t, err)
 	assert.Equal(t, "", body)
 	assert.Equal(t, http.StatusNotFound, statusCode)
@@ -50,9 +50,9 @@ func TestClusterPutGetEntity(t *testing.T) {
 	payload := "bar"
 	entity := newTestObject(payload)
 	b, err := json.Marshal(entity)
-	_, _, err = cluster[0].putEntityRemote(cluster[1].Address, key, string(b), []int{cluster[0].ID}, defaultHops)
+	_, _, err = cluster[0].putValueRemote(cluster[1].Address, key, string(b), []int{cluster[0].ID}, defaultHops)
 	assert.NoError(t, err)
-	_, body, err := cluster[3].getEntityRemote(cluster[4].Address, key, []int{cluster[3].ID}, defaultHops)
+	_, body, err := cluster[3].getValueRemote(cluster[4].Address, key, []int{cluster[3].ID}, defaultHops)
 	storedEntity := &testObject{}
 	err = json.Unmarshal([]byte(body), storedEntity)
 	assert.NoError(t, err)

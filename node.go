@@ -48,8 +48,8 @@ func NewNode(port int, path string, store Store) *Node {
 
 	node.service = new(restful.WebService)
 	node.service.Path(path).Consumes(restful.MIME_JSON).Produces(restful.MIME_JSON)
-	node.service.Route(node.service.GET(entitiesPath + "/{" + keyPath + "}").To(node.getEntity))
-	node.service.Route(node.service.PUT(entitiesPath + "/{" + keyPath + "}").To(node.putEntity))
+	node.service.Route(node.service.GET(entitiesPath + "/{" + keyPath + "}").To(node.getValue))
+	node.service.Route(node.service.PUT(entitiesPath + "/{" + keyPath + "}").To(node.putValue))
 	node.service.Route(node.service.PUT(registerPath).To(node.registerNode))
 	node.service.Route(node.service.GET(nodesPath).To(node.getNodes))
 	restful.Add(node.service)
@@ -73,7 +73,7 @@ func (n *Node) Stop() {
 	}
 }
 
-func (n *Node) getEntity(request *restful.Request, response *restful.Response) {
+func (n *Node) getValue(request *restful.Request, response *restful.Response) {
 	key, err := url.QueryUnescape(request.PathParameter(keyPath))
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
@@ -103,7 +103,7 @@ func (n *Node) getEntity(request *restful.Request, response *restful.Response) {
 	}
 
 	address := n.nodes[next]
-	statusCode, body, err := n.getEntityRemote(address, key, visited, hops)
+	statusCode, body, err := n.getValueRemote(address, key, visited, hops)
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
 		return
@@ -117,7 +117,7 @@ func (n *Node) getEntity(request *restful.Request, response *restful.Response) {
 	response.Write([]byte(body))
 }
 
-func (n *Node) putEntity(request *restful.Request, response *restful.Response) {
+func (n *Node) putValue(request *restful.Request, response *restful.Response) {
 	key := request.PathParameter(keyPath)
 	bytes, err := ioutil.ReadAll(request.Request.Body)
 	if err != nil {
@@ -142,7 +142,7 @@ func (n *Node) putEntity(request *restful.Request, response *restful.Response) {
 	}
 
 	address := n.nodes[next]
-	statusCode, body, err := n.putEntityRemote(address, key, value, visited, hops)
+	statusCode, body, err := n.putValueRemote(address, key, value, visited, hops)
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
 		return
@@ -181,12 +181,12 @@ func (n *Node) getNodes(request *restful.Request, response *restful.Response) {
 	log.Printf("provided '%d' nodes registered to node '%d'", len(n.nodes), n.ID)
 }
 
-func (n *Node) getEntityRemote(address string, key string, visited []int, hops int) (int, string, error) {
+func (n *Node) getValueRemote(address string, key string, visited []int, hops int) (int, string, error) {
 	uri := address + entitiesPath + "/" + url.QueryEscape(key)
 	return n.send("GET", uri, "", visited, hops)
 }
 
-func (n *Node) putEntityRemote(address string, key string, value string, visited []int, hops int) (int, string, error) {
+func (n *Node) putValueRemote(address string, key string, value string, visited []int, hops int) (int, string, error) {
 	uri := address + entitiesPath + "/" + url.QueryEscape(key)
 	return n.send("PUT", uri, value, visited, hops)
 }
