@@ -12,6 +12,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"sort"
+	"strings"
 )
 
 const keyPath = "key"
@@ -20,8 +21,9 @@ const addressParam = "address"
 const entitiesPath = "/entities"
 const nodesPath = "/nodes"
 const registerPath = "/register"
-const visitedHeader="X-Corduroy-Visited"
-const hopsHeader="X-Corduroy-Hops"
+const visitedHeader = "X-Corduroy-Visited"
+const hopsHeader = "X-Corduroy-Hops"
+const defaultHops = 3
 
 type Node struct {
 	Address    string
@@ -47,8 +49,8 @@ func NewNode(port int, path string, store Store) *Node {
 	node.service = new(restful.WebService)
 	node.service.Path(path).Consumes(restful.MIME_JSON).Produces(restful.MIME_JSON)
 	node.service.Route(node.service.GET(entitiesPath + "/{" + keyPath + "}").To(node.getEntity))
-	node.service.Route(node.service.POST(entitiesPath + "/{" + keyPath + "}").To(node.putEntity))
-	node.service.Route(node.service.GET(registerPath).To(node.registerNode))
+	node.service.Route(node.service.PUT(entitiesPath + "/{" + keyPath + "}").To(node.putEntity))
+	node.service.Route(node.service.PUT(registerPath).To(node.registerNode))
 	node.service.Route(node.service.GET(nodesPath).To(node.getNodes))
 	restful.Add(node.service)
 	return node
@@ -75,14 +77,46 @@ func (n *Node) getEntity(request *restful.Request, response *restful.Response) {
 		response.WriteError(http.StatusInternalServerError, err)
 		return
 	}
-	value := n.store.Get(key)
-	bytes := []byte(value)
-	response.Write(bytes)
+
+	if n.store.Contains(key) {
+		value := n.store.Get(key)
+		b := []byte(value)
+		log.Printf("retrieved value for key '%s' from node '%d'", key, n.ID)
+		response.WriteHeader(http.StatusOK)
+		response.Write(b)
+		return
+	}
+
+	visited, hops, err := n.parse(request.Request)
+	if hops <= 0 {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+	hops--
+	visited = append(visited, n.ID)
+	next := n.bestMatch(key, visited)
+	if next < 0 {
+		response.WriteHeader(http.StatusNotFound)
+		return
+	}
+
+	address := n.nodes[next]
+	statusCode, body, err := n.getEntityRemote(address, key, visited, hops)
+	if err != nil {
+		response.WriteError(http.StatusInternalServerError, err)
+		return
+	}
+	if statusCode != http.StatusOK {
+		response.WriteHeader(statusCode)
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+	response.Write([]byte(body))
 }
 
 func (n *Node) putEntity(request *restful.Request, response *restful.Response) {
 	key := request.PathParameter(keyPath)
-	entity := new(interface{})
 	bytes, err := ioutil.ReadAll(request.Request.Body)
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
@@ -90,7 +124,34 @@ func (n *Node) putEntity(request *restful.Request, response *restful.Response) {
 	}
 	value := string(bytes)
 	n.store.Put(key, value)
-	response.WriteEntity(entity)
+	log.Printf("wrote key '%s' and associated value to node '%d'", key, n.ID)
+
+	visited, hops, err := n.parse(request.Request)
+	if hops <= 0 {
+		response.WriteHeader(http.StatusOK)
+		return
+	}
+	hops--
+	visited = append(visited, n.ID)
+	next := n.bestMatch(key, visited)
+	if next < 0 {
+		response.WriteHeader(http.StatusOK)
+		return
+	}
+
+	address := n.nodes[next]
+	statusCode, body, err := n.putEntityRemote(address, key, value, visited, hops)
+	if err != nil {
+		response.WriteError(http.StatusInternalServerError, err)
+		return
+	}
+	if statusCode != http.StatusOK {
+		response.WriteHeader(statusCode)
+		return
+	}
+
+	response.WriteHeader(http.StatusOK)
+	response.Write([]byte(body))
 }
 
 func (n *Node) registerNode(request *restful.Request, response *restful.Response) {
@@ -116,40 +177,19 @@ func (n *Node) getNodes(request *restful.Request, response *restful.Response) {
 	response.WriteEntity(n.nodes)
 }
 
-func (n *Node) getEntityRemote(address string, key string, entity interface{}) error {
+func (n *Node) getEntityRemote(address string, key string, visited []int, hops int) (int, string, error) {
 	uri := address + entitiesPath + "/" + url.QueryEscape(key)
-	response, err := http.Get(uri)
-	if err != nil {
-		return err
-	}
-	defer response.Body.Close()
-	decoder := json.NewDecoder(response.Body)
-	err = decoder.Decode(entity)
-	if err != nil {
-		return err
-	}
-	return nil
+	return n.send("GET", uri, "", visited, hops)
 }
 
-func (n *Node) putEntityRemote(address string, key string, entity interface{}) error {
-	b := new(bytes.Buffer)
-	encoder := json.NewEncoder(b)
-	err := encoder.Encode(entity)
-	if err != nil {
-		return err
-	}
-
+func (n *Node) putEntityRemote(address string, key string, value string, visited []int, hops int) (int, string, error) {
 	uri := address + entitiesPath + "/" + url.QueryEscape(key)
-	_, err = http.Post(uri, "application/json; charset=utf-8", b)
-	if err != nil {
-		return err
-	}
-	return nil
+	return n.send("PUT", uri, value, visited, hops)
 }
 
 func (n *Node) registerNodeRemote(address string) error {
 	uri := address + registerPath + "?" + idParam + "=" + strconv.Itoa(n.ID) + "&" + addressParam + "=" + n.Address
-	_, err := http.Get(uri)
+	_, _, err := n.send("PUT", uri, "", []int{n.ID}, 0)
 	return err
 }
 
@@ -191,6 +231,10 @@ func (n *Node) bestMatch(s string, excludes []int) int {
 		}
 	}
 
+	if len(keys) == 0 {
+		return -1
+	}
+
 	sort.Ints(keys)
 	h := hash(s)
 	var last int
@@ -207,3 +251,55 @@ func (n *Node) bestMatch(s string, excludes []int) int {
 
 	return last
 }
+
+func (n *Node) send(verb string, uri string, body string, visited []int, hops int) (int, string, error) {
+	b1 := []byte(body)
+	buff := bytes.NewBuffer(b1[:])
+	request, err := http.NewRequest(verb, uri, buff)
+	if err != nil {
+		return 0, "", err
+	}
+
+	v := ""
+	for _, id := range visited {
+		if v != "" {
+			v = v + ","
+		}
+		v = v + strconv.Itoa(id)
+	}
+
+	request.Header.Set("Content-Type", "application/json; charset=utf-8")
+	request.Header.Set(visitedHeader, v)
+	request.Header.Set(hopsHeader, strconv.Itoa(hops))
+	response, err := n.client.Do(request)
+	defer response.Body.Close()
+	if err != nil {
+		return 0, "", err
+	}
+
+	b2, err := ioutil.ReadAll(response.Body)
+	if err != nil {
+		return 0, "", err
+	}
+
+	return response.StatusCode, string(b2), nil
+}
+
+func (n *Node) parse(request *http.Request) ([]int, int, error) {
+	v := request.Header.Get(visitedHeader)
+	s := strings.Split(v, ",")
+	visited := make([]int, len(s))
+	for _, id := range s {
+		n, err := strconv.Atoi(id)
+		if err != nil {
+			visited = append(visited, n)
+		}
+	}
+
+	hops, err := strconv.Atoi(request.Header.Get(hopsHeader))
+	if err != nil {
+		return make([]int, 0), 0, err
+	}
+	return visited, hops, nil
+}
+

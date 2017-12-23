@@ -15,6 +15,7 @@ func TestMemoryStorePutGet(t *testing.T) {
 	assert.NoError(t, err)
 	value := string(bytes)
 	store.Put(key, value)
+	assert.True(t, store.Contains(key))
 	storedValue := store.Get(key)
 	storedBytes := []byte(storedValue)
 	storedEntity := &testObject{}

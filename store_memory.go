@@ -17,3 +17,10 @@ func (ms *MemoryStore) Put(key string, value string) {
 func (ms *MemoryStore) Get(key string) string {
 	return ms.values[key]
 }
+
+func (ms *MemoryStore) Contains(key string) bool {
+	if _, found := ms.values[key]; found {
+		return true
+	}
+	return false
+}
