@@ -107,6 +107,10 @@ func (n *Node) Stop() {
 			}
 		}()
 
+		for _, ticker := range n.tickers {
+			ticker.Stop()
+		}
+
 		n.nodesMux.Lock()
 		delete(n.nodes, n.ID)
 		n.nodesMux.Unlock()
