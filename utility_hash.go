@@ -3,9 +3,9 @@ package corduroy
 import (
 	"crypto/sha1"
 	"encoding/binary"
-	"strconv"
-	"log"
 	"fmt"
+	"log"
+	"strconv"
 )
 
 func hash(s string) int {

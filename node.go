@@ -1,18 +1,18 @@
 package corduroy
 
 import (
-	"github.com/emicklei/go-restful"
-	"net/http"
-	"io/ioutil"
-	"strconv"
-	"log"
-	"time"
-	"context"
-	"net/url"
 	"bytes"
+	"context"
 	"encoding/json"
+	"github.com/emicklei/go-restful"
+	"io/ioutil"
+	"log"
+	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 const keyPath = "key"
@@ -27,8 +27,8 @@ const hopsHeader = "X-Corduroy-Hops"
 const defaultHops = 3
 
 type Node struct {
-	Address    string
-	ID         int
+	Address string
+	ID      int
 	client  *http.Client
 	server  *http.Server
 	service *restful.WebService
@@ -40,11 +40,11 @@ func NewNode(port int, path string, store Store) *Node {
 	address := buildLocalUri(port)
 	node := &Node{
 		Address: "http://" + buildLocalUri(port) + path,
-		ID: hash(address),
-		client : &http.Client{},
-		server: &http.Server{Addr:":" + strconv.Itoa(port)},
-		store: store,
-		nodes: make(map[int]string),
+		ID:      hash(address),
+		client:  &http.Client{},
+		server:  &http.Server{Addr: ":" + strconv.Itoa(port)},
+		store:   store,
+		nodes:   make(map[int]string),
 	}
 
 	node.service = new(restful.WebService)
@@ -70,7 +70,7 @@ func (n *Node) Start(port int) {
 func (n *Node) Stop() {
 	if n.server != nil {
 		log.Printf("stopping node '%d'", n.ID)
-		ctx, _ := context.WithTimeout(context.Background(), time.Millisecond * 100)
+		ctx, _ := context.WithTimeout(context.Background(), time.Millisecond*100)
 		log.Fatal(n.server.Shutdown(ctx))
 	}
 }
@@ -312,4 +312,3 @@ func (n *Node) parse(request *http.Request) ([]int, int, error) {
 	}
 	return visited, hops, nil
 }
-

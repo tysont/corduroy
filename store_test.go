@@ -1,9 +1,9 @@
 package corduroy
 
 import (
-	"testing"
-	"github.com/stretchr/testify/assert"
 	"encoding/json"
+	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestMemoryStorePutGet(t *testing.T) {

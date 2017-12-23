@@ -1,11 +1,11 @@
 package corduroy
 
 import (
-	"testing"
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
-func newTestObject(payload string) *testObject{
+func newTestObject(payload string) *testObject {
 	return &testObject{
 		Payload: payload,
 	}

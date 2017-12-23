@@ -1,9 +1,9 @@
 package corduroy
 
 import (
-	"strconv"
-	"os"
 	"net"
+	"os"
+	"strconv"
 )
 
 func buildLocalUri(port int) string {

@@ -1,12 +1,12 @@
 package corduroy
 
 import (
+	"encoding/json"
+	"github.com/stretchr/testify/assert"
+	"net/http"
+	"strconv"
 	"testing"
 	"time"
-	"github.com/stretchr/testify/assert"
-	"strconv"
-	"encoding/json"
-	"net/http"
 )
 
 func TestPing(t *testing.T) {
@@ -70,7 +70,7 @@ func TestClusterPutGetEntity(t *testing.T) {
 func createTestNode() *Node {
 	store := NewMemoryStore()
 	port := getNextTestPort()
-	node := NewNode(port, "/" + strconv.Itoa(port), store)
+	node := NewNode(port, "/"+strconv.Itoa(port), store)
 	node.Start(port)
 	time.Sleep(time.Millisecond * 10)
 	return node
