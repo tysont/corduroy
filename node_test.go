@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"testing"
-	"time"
 )
 
 func TestPing(t *testing.T) {
@@ -23,9 +22,9 @@ func TestNodePutGetEntity(t *testing.T) {
 	payload := "bar"
 	entity := newTestObject(payload)
 	b, err := json.Marshal(entity)
-	_, _, err = node.putValueRemote(node.Address, key, string(b), []int{node.ID}, defaultHops)
+	_, _, err = node.putValueRemote(node.Address, key, string(b), []int{node.ID}, redundantCopies)
 	assert.NoError(t, err)
-	_, body, err := node.getValueRemote(node.Address, key, []int{node.ID}, defaultHops)
+	_, body, err := node.getValueRemote(node.Address, key, []int{node.ID}, redundantCopies)
 	storedEntity := &testObject{}
 	err = json.Unmarshal([]byte(body), storedEntity)
 	assert.NoError(t, err)
@@ -35,7 +34,7 @@ func TestNodePutGetEntity(t *testing.T) {
 func TestNodeGetNotFound(t *testing.T) {
 	node := createTestNode()
 	key := "foo"
-	statusCode, body, err := node.getValueRemote(node.Address, key, []int{node.ID}, defaultHops)
+	statusCode, body, err := node.getValueRemote(node.Address, key, []int{node.ID}, redundantCopies)
 	assert.NoError(t, err)
 	assert.Equal(t, "", body)
 	assert.Equal(t, http.StatusNotFound, statusCode)
@@ -47,7 +46,7 @@ func TestNodeRegisterSync(t *testing.T) {
 	n3 := createTestNode()
 	err := n2.registerNodeRemote(n3.Address)
 	assert.NoError(t, err)
-	err = n1.syncNodesRemote(n3.Address)
+	err = n1.syncNodeRemote(n3.Address)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, len(n1.nodes))
 }
@@ -58,13 +57,23 @@ func TestClusterPutGetEntity(t *testing.T) {
 	payload := "bar"
 	entity := newTestObject(payload)
 	b, err := json.Marshal(entity)
-	_, _, err = cluster[0].putValueRemote(cluster[1].Address, key, string(b), []int{cluster[0].ID}, defaultHops)
+	_, _, err = cluster[0].putValueRemote(cluster[1].Address, key, string(b), []int{cluster[0].ID}, redundantCopies)
 	assert.NoError(t, err)
-	_, body, err := cluster[3].getValueRemote(cluster[4].Address, key, []int{cluster[3].ID}, defaultHops)
+	_, body, err := cluster[3].getValueRemote(cluster[4].Address, key, []int{cluster[3].ID}, redundantCopies)
 	storedEntity := &testObject{}
 	err = json.Unmarshal([]byte(body), storedEntity)
 	assert.NoError(t, err)
 	assert.Equal(t, payload, storedEntity.Payload)
+}
+
+func TestClusterDetectStoppedNode(t *testing.T) {
+	cluster := createTestCluster(3)
+	_, registered := cluster[0].nodes[cluster[1].ID]
+	assert.True(t, registered)
+	cluster[1].Stop()
+	cluster[0].syncNode(cluster[1].ID)
+	_, registered = cluster[0].nodes[cluster[1].ID]
+	assert.False(t, registered)
 }
 
 func createTestNode() *Node {
@@ -72,7 +81,7 @@ func createTestNode() *Node {
 	port := getNextTestPort()
 	node := NewNode(port, "/"+strconv.Itoa(port), store)
 	node.Start(port)
-	time.Sleep(time.Millisecond * 10)
+	node.waitStart()
 	return node
 }
 
@@ -86,7 +95,7 @@ func createTestCluster(size int) []*Node {
 		cluster[i] = node
 	}
 	for _, node := range cluster {
-		node.syncNodesRemote(firstNode.Address)
+		node.syncNodeRemote(firstNode.Address)
 	}
 	return cluster
 }
