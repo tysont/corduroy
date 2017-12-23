@@ -58,6 +58,7 @@ func NewNode(port int, path string, store Store) *Node {
 
 func (n *Node) Start(port int) {
 	go func() {
+		log.Printf("starting node '%d' at address '%s'", n.ID, n.Address)
 		log.Fatal(n.server.ListenAndServe())
 	}()
 
@@ -66,6 +67,7 @@ func (n *Node) Start(port int) {
 
 func (n *Node) Stop() {
 	if n.server != nil {
+		log.Printf("stopping node '%d'", n.ID)
 		ctx, _ := context.WithTimeout(context.Background(), time.Millisecond * 100)
 		log.Fatal(n.server.Shutdown(ctx))
 	}
@@ -155,12 +157,12 @@ func (n *Node) putEntity(request *restful.Request, response *restful.Response) {
 }
 
 func (n *Node) registerNode(request *restful.Request, response *restful.Response) {
-	rawId, err := url.QueryUnescape(request.QueryParameter(idParam))
+	i, err := url.QueryUnescape(request.QueryParameter(idParam))
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
 		return
 	}
-	id, err := strconv.Atoi(rawId)
+	id, err := strconv.Atoi(i)
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
 		return
@@ -171,10 +173,12 @@ func (n *Node) registerNode(request *restful.Request, response *restful.Response
 		return
 	}
 	n.nodes[id] = address
+	log.Printf("registered node '%d' with node '%d'", id, n.ID)
 }
 
 func (n *Node) getNodes(request *restful.Request, response *restful.Response) {
 	response.WriteEntity(n.nodes)
+	log.Printf("provided '%d' nodes registered to node '%d'", len(n.nodes), n.ID)
 }
 
 func (n *Node) getEntityRemote(address string, key string, visited []int, hops int) (int, string, error) {
@@ -195,15 +199,13 @@ func (n *Node) registerNodeRemote(address string) error {
 
 func (n *Node) syncNodesRemote(address string) error {
 	uri := address + nodesPath
-	response, err := http.Get(uri)
+	_, body, err := n.send("GET", uri, "", []int{n.ID}, 0)
 	if err != nil {
 		return err
 	}
 
-	defer response.Body.Close()
-	decoder := json.NewDecoder(response.Body)
 	nodes := &map[int]string{}
-	err = decoder.Decode(nodes)
+	err = json.Unmarshal([]byte(body), nodes)
 	if err != nil {
 		return err
 	}
@@ -271,6 +273,7 @@ func (n *Node) send(verb string, uri string, body string, visited []int, hops in
 	request.Header.Set("Content-Type", "application/json; charset=utf-8")
 	request.Header.Set(visitedHeader, v)
 	request.Header.Set(hopsHeader, strconv.Itoa(hops))
+	log.Printf("node '%d' sending '%s' request to address '%s'", n.ID, verb, uri)
 	response, err := n.client.Do(request)
 	defer response.Body.Close()
 	if err != nil {
