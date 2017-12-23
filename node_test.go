@@ -9,6 +9,14 @@ import (
 	"net/http"
 )
 
+func TestPing(t *testing.T) {
+	node := createTestNode()
+	uri := node.Address + pingPath
+	response, err := http.Get(uri)
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, response.StatusCode)
+}
+
 func TestNodePutGetEntity(t *testing.T) {
 	node := createTestNode()
 	key := "foo"

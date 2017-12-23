@@ -18,6 +18,7 @@ import (
 const keyPath = "key"
 const idParam = "id"
 const addressParam = "address"
+const pingPath = "/ping"
 const entitiesPath = "/entities"
 const nodesPath = "/nodes"
 const registerPath = "/register"
@@ -48,6 +49,7 @@ func NewNode(port int, path string, store Store) *Node {
 
 	node.service = new(restful.WebService)
 	node.service.Path(path).Consumes(restful.MIME_JSON).Produces(restful.MIME_JSON)
+	node.service.Route(node.service.GET(pingPath).To(node.ping))
 	node.service.Route(node.service.GET(entitiesPath + "/{" + keyPath + "}").To(node.getValue))
 	node.service.Route(node.service.PUT(entitiesPath + "/{" + keyPath + "}").To(node.putValue))
 	node.service.Route(node.service.PUT(registerPath).To(node.registerNode))
@@ -71,6 +73,11 @@ func (n *Node) Stop() {
 		ctx, _ := context.WithTimeout(context.Background(), time.Millisecond * 100)
 		log.Fatal(n.server.Shutdown(ctx))
 	}
+}
+
+func (n *Node) ping(request *restful.Request, response *restful.Response) {
+	response.WriteHeader(http.StatusOK)
+	log.Printf("node '%d' responded to ping", n.ID)
 }
 
 func (n *Node) getValue(request *restful.Request, response *restful.Response) {
