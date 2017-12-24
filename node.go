@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -36,12 +35,11 @@ type Node struct {
 	server   *http.Server
 	service  *restful.WebService
 	store    Store
-	nodes    map[int]string
-	nodesMux sync.Mutex
+	registry Registry
 	tickers  []*time.Ticker
 }
 
-func NewNode(port int, path string, store Store) *Node {
+func NewNode(port int, path string, store Store, registry Registry) *Node {
 	address := buildLocalUri(port)
 	node := &Node{
 		Address: "http://" + buildLocalUri(port) + path,
@@ -49,7 +47,7 @@ func NewNode(port int, path string, store Store) *Node {
 		client:  &http.Client{},
 		server:  &http.Server{Addr: ":" + strconv.Itoa(port)},
 		store:   store,
-		nodes:   make(map[int]string),
+		registry:   registry,
 	}
 
 	node.service = new(restful.WebService)
@@ -72,10 +70,7 @@ func (n *Node) Start(port int) {
 		}
 	}()
 
-	n.nodesMux.Lock()
-	n.nodes[n.ID] = n.Address
-	n.nodesMux.Unlock()
-
+	n.registry.Put(n.ID, n.Address)
 	syncTicker := time.NewTicker(time.Second * syncFrequencySeconds)
 	go func() {
 		for {
@@ -111,10 +106,7 @@ func (n *Node) Stop() {
 			ticker.Stop()
 		}
 
-		n.nodesMux.Lock()
-		delete(n.nodes, n.ID)
-		n.nodesMux.Unlock()
-
+		n.registry.Delete(n.ID)
 		time.Sleep(time.Millisecond * 10)
 		n.waitStop()
 	}
@@ -167,10 +159,7 @@ func (n *Node) getValue(request *restful.Request, response *restful.Response) {
 		return
 	}
 
-	n.nodesMux.Lock()
-	address := n.nodes[next]
-	n.nodesMux.Unlock()
-
+	address := n.registry.Get(next)
 	statusCode, body, err := n.getValueRemote(address, key, visited, hops)
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
@@ -214,10 +203,8 @@ func (n *Node) putValue(request *restful.Request, response *restful.Response) {
 		return
 	}
 
-	n.nodesMux.Lock()
-	address := n.nodes[next]
-	n.nodesMux.Unlock()
 
+	address := n.registry.Get(next)
 	statusCode, body, err := n.putValueRemote(address, key, value, visited, hops)
 	if err != nil {
 		response.WriteError(http.StatusInternalServerError, err)
@@ -254,10 +241,8 @@ func (n *Node) registerNode(request *restful.Request, response *restful.Response
 		return
 	}
 
-	n.nodesMux.Lock()
-	n.nodes[id] = address
+	n.registry.Put(id, address)
 	log.Printf("registered node '%d' with node '%d'", id, n.ID)
-	n.nodesMux.Unlock()
 }
 
 func (n *Node) registerNodeRemote(address string) error {
@@ -267,39 +252,32 @@ func (n *Node) registerNodeRemote(address string) error {
 }
 
 func (n *Node) getNodes(request *restful.Request, response *restful.Response) {
-	n.nodesMux.Lock()
-	response.WriteEntity(n.nodes)
-	log.Printf("provided '%d' nodes registered to node '%d'", len(n.nodes), n.ID)
-	n.nodesMux.Unlock()
+	nodes := n.registry.GetAll()
+	response.WriteEntity(nodes)
+	log.Printf("provided '%d' nodes registered to node '%d'", len(nodes), n.ID)
 }
 
 func (n *Node) syncRandomNode() {
-	n.nodesMux.Lock()
-	r := rand.Int() % len(n.nodes)
+	nodes := n.registry.GetAll()
+	r := rand.Int() % len(nodes)
 	var id int
 	i := 0
-	for id = range n.nodes {
+	for id = range nodes {
 		if i == r {
 			break
 		}
 		i++
 	}
-	n.nodesMux.Unlock()
 	n.syncNode(id)
 }
 
 func (n *Node) syncNode(id int) {
-	n.nodesMux.Lock()
-	address := n.nodes[id]
-	n.nodesMux.Unlock()
-
+	address := n.registry.Get(id)
 	uri := address + pingPath
 	statusCode, _, err := n.send("GET", uri, "", []int{n.ID}, 1)
 	if err != nil || statusCode != http.StatusOK {
-		n.nodesMux.Lock()
-		delete(n.nodes, id)
+		n.registry.Delete(id)
 		log.Printf("removed node '%d' from node '%d' registry", id, n.ID)
-		n.nodesMux.Unlock()
 	} else {
 		err = n.syncNodeRemote(address)
 	}
@@ -318,11 +296,9 @@ func (n *Node) syncNodeRemote(address string) error {
 		return err
 	}
 
-	n.nodesMux.Lock()
 	for id, address := range *nodes {
-		n.nodes[id] = address
+		n.registry.Put(id, address)
 	}
-	n.nodesMux.Unlock()
 	return nil
 }
 
@@ -346,17 +322,16 @@ func (n *Node) bestMatch(s string, excludes []int) int {
 		x[exclude] = true
 	}
 
-	n.nodesMux.Lock()
-	if len(n.nodes) == 0 {
+	nodes := n.registry.GetAll()
+	if len(nodes) == 0 {
 		return -1
 	}
 
-	for id, _ := range n.nodes {
+	for id, _ := range nodes {
 		if _, ok := x[id]; !ok {
 			keys = append(keys, id)
 		}
 	}
-	n.nodesMux.Unlock()
 
 	if len(keys) == 0 {
 		return -1

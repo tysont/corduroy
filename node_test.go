@@ -48,7 +48,7 @@ func TestNodeRegisterSync(t *testing.T) {
 	assert.NoError(t, err)
 	err = n1.syncNodeRemote(n3.Address)
 	assert.NoError(t, err)
-	assert.Equal(t, 3, len(n1.nodes))
+	assert.Equal(t, 3, n1.registry.Size())
 }
 
 func TestClusterPutGetEntity(t *testing.T) {
@@ -68,18 +68,17 @@ func TestClusterPutGetEntity(t *testing.T) {
 
 func TestClusterDetectStoppedNode(t *testing.T) {
 	cluster := createTestCluster(3)
-	_, registered := cluster[0].nodes[cluster[1].ID]
-	assert.True(t, registered)
+	assert.True(t, cluster[0].registry.Contains(cluster[1].ID))
 	cluster[1].Stop()
 	cluster[0].syncNode(cluster[1].ID)
-	_, registered = cluster[0].nodes[cluster[1].ID]
-	assert.False(t, registered)
+	assert.False(t, cluster[0].registry.Contains(cluster[1].ID))
 }
 
 func createTestNode() *Node {
-	store := NewMemoryStore()
 	port := getNextTestPort()
-	node := NewNode(port, "/"+strconv.Itoa(port), store)
+	store := NewMemoryStore()
+	registry := NewMemoryRegistry()
+	node := NewNode(port, "/" + strconv.Itoa(port), store, registry)
 	node.Start(port)
 	node.waitStart()
 	return node
