@@ -1,7 +1,6 @@
 package corduroy
 
 import (
-	"bytes"
 	"encoding/json"
 	"github.com/emicklei/go-restful"
 	"io/ioutil"
@@ -21,17 +20,18 @@ const syncFrequencySeconds = 20
 const keyPath = "key"
 const idParam = "id"
 const addressParam = "address"
+
 const pingPath = "/ping"
 const entitiesPath = "/entities"
 const nodesPath = "/nodes"
 const registerPath = "/register"
+
 const visitedHeader = "X-Corduroy-Visited"
 const hopsHeader = "X-Corduroy-Hops"
 
 type Node struct {
 	Address  string
 	ID       int
-	client   *http.Client
 	server   *http.Server
 	service  *restful.WebService
 	store    Store
@@ -44,7 +44,6 @@ func NewNode(port int, path string, store Store, registry Registry) *Node {
 	node := &Node{
 		Address: "http://" + buildLocalUri(port) + path,
 		ID:      hash(address),
-		client:  &http.Client{},
 		server:  &http.Server{Addr: ":" + strconv.Itoa(port)},
 		store:   store,
 		registry:   registry,
@@ -75,7 +74,7 @@ func (n *Node) Start(port int) {
 	go func() {
 		for {
 			<-syncTicker.C
-			n.syncRandomNode()
+			n.syncRandomNodeRemote()
 		}
 	}()
 	n.tickers = append(n.tickers, syncTicker)
@@ -127,7 +126,8 @@ func (n *Node) ping(request *restful.Request, response *restful.Response) {
 
 func (n *Node) pingRemote(address string) (int, string, error) {
 	uri := address + pingPath
-	return n.send("GET", uri, "", []int{n.ID}, 1)
+	log.Printf("node '%d' sending ping request to address '%s'", n.ID, uri)
+	return send("GET", uri, "", []int{n.ID}, 1)
 }
 
 func (n *Node) getValue(request *restful.Request, response *restful.Response) {
@@ -176,7 +176,8 @@ func (n *Node) getValue(request *restful.Request, response *restful.Response) {
 
 func (n *Node) getValueRemote(address string, key string, visited []int, hops int) (int, string, error) {
 	uri := address + entitiesPath + "/" + url.QueryEscape(key)
-	return n.send("GET", uri, "", visited, hops)
+	log.Printf("node '%d' sending get value request to address '%s'", n.ID, uri)
+	return send("GET", uri, "", visited, hops)
 }
 
 func (n *Node) putValue(request *restful.Request, response *restful.Response) {
@@ -221,7 +222,8 @@ func (n *Node) putValue(request *restful.Request, response *restful.Response) {
 
 func (n *Node) putValueRemote(address string, key string, value string, visited []int, hops int) (int, string, error) {
 	uri := address + entitiesPath + "/" + url.QueryEscape(key)
-	return n.send("PUT", uri, value, visited, hops)
+	log.Printf("node '%d' sending put value request to address '%s'", n.ID, uri)
+	return send("PUT", uri, value, visited, hops)
 }
 
 func (n *Node) registerNode(request *restful.Request, response *restful.Response) {
@@ -247,7 +249,8 @@ func (n *Node) registerNode(request *restful.Request, response *restful.Response
 
 func (n *Node) registerNodeRemote(address string) error {
 	uri := address + registerPath + "?" + idParam + "=" + strconv.Itoa(n.ID) + "&" + addressParam + "=" + n.Address
-	_, _, err := n.send("PUT", uri, "", []int{n.ID}, 0)
+	log.Printf("node '%d' sending register request to address '%s'", n.ID, uri)
+	_, _, err := send("PUT", uri, "", []int{n.ID}, 0)
 	return err
 }
 
@@ -257,7 +260,7 @@ func (n *Node) getNodes(request *restful.Request, response *restful.Response) {
 	log.Printf("provided '%d' nodes registered to node '%d'", len(nodes), n.ID)
 }
 
-func (n *Node) syncRandomNode() {
+func (n *Node) syncRandomNodeRemote() {
 	nodes := n.registry.GetAll()
 	r := rand.Int() % len(nodes)
 	var id int
@@ -268,24 +271,26 @@ func (n *Node) syncRandomNode() {
 		}
 		i++
 	}
-	n.syncNode(id)
+	n.syncNodeRemote(id)
 }
 
-func (n *Node) syncNode(id int) {
+func (n *Node) syncNodeRemote(id int) {
 	address := n.registry.Get(id)
 	uri := address + pingPath
-	statusCode, _, err := n.send("GET", uri, "", []int{n.ID}, 1)
+	log.Printf("node '%d' sending sync request to address '%s'", n.ID, uri)
+	statusCode, _, err := send("GET", uri, "", []int{n.ID}, 1)
 	if err != nil || statusCode != http.StatusOK {
 		n.registry.Delete(id)
 		log.Printf("removed node '%d' from node '%d' registry", id, n.ID)
 	} else {
-		err = n.syncNodeRemote(address)
+		err = n.syncNodeRegistryRemote(address)
 	}
 }
 
-func (n *Node) syncNodeRemote(address string) error {
+func (n *Node) syncNodeRegistryRemote(address string) error {
 	uri := address + nodesPath
-	_, body, err := n.send("GET", uri, "", []int{n.ID}, 0)
+	log.Printf("node '%d' sending sync registry request to address '%s'", n.ID, uri)
+	_, body, err := send("GET", uri, "", []int{n.ID}, 0)
 	if err != nil {
 		return err
 	}
@@ -354,39 +359,7 @@ func (n *Node) bestMatch(s string, excludes []int) int {
 	return last
 }
 
-func (n *Node) send(verb string, uri string, body string, visited []int, hops int) (int, string, error) {
-	b1 := []byte(body)
-	buff := bytes.NewBuffer(b1[:])
-	request, err := http.NewRequest(verb, uri, buff)
-	if err != nil {
-		return 0, "", err
-	}
 
-	v := ""
-	for _, id := range visited {
-		if v != "" {
-			v = v + ","
-		}
-		v = v + strconv.Itoa(id)
-	}
-
-	request.Header.Set("Content-Type", "application/json; charset=utf-8")
-	request.Header.Set(visitedHeader, v)
-	request.Header.Set(hopsHeader, strconv.Itoa(hops))
-	log.Printf("node '%d' sending '%s' request to address '%s'", n.ID, verb, uri)
-	response, err := n.client.Do(request)
-	if err != nil {
-		return 0, "", err
-	}
-
-	defer response.Body.Close()
-	b2, err := ioutil.ReadAll(response.Body)
-	if err != nil {
-		return 0, "", err
-	}
-
-	return response.StatusCode, string(b2), nil
-}
 
 func (n *Node) parse(request *http.Request) ([]int, int, error) {
 	v := request.Header.Get(visitedHeader)

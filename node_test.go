@@ -46,7 +46,7 @@ func TestNodeRegisterSync(t *testing.T) {
 	n3 := createTestNode()
 	err := n2.registerNodeRemote(n3.Address)
 	assert.NoError(t, err)
-	err = n1.syncNodeRemote(n3.Address)
+	err = n1.syncNodeRegistryRemote(n3.Address)
 	assert.NoError(t, err)
 	assert.Equal(t, 3, n1.registry.Size())
 }
@@ -70,7 +70,7 @@ func TestClusterDetectStoppedNode(t *testing.T) {
 	cluster := createTestCluster(3)
 	assert.True(t, cluster[0].registry.Contains(cluster[1].ID))
 	cluster[1].Stop()
-	cluster[0].syncNode(cluster[1].ID)
+	cluster[0].syncNodeRemote(cluster[1].ID)
 	assert.False(t, cluster[0].registry.Contains(cluster[1].ID))
 }
 
@@ -94,7 +94,7 @@ func createTestCluster(size int) []*Node {
 		cluster[i] = node
 	}
 	for _, node := range cluster {
-		node.syncNodeRemote(firstNode.Address)
+		node.syncNodeRegistryRemote(firstNode.Address)
 	}
 	return cluster
 }
