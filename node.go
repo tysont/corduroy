@@ -10,7 +10,6 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -146,7 +145,8 @@ func (n *Node) getValue(request *restful.Request, response *restful.Response) {
 		return
 	}
 
-	visited, hops, err := n.parse(request.Request)
+	visited, _ := parseVisited(&request.Request.Header)
+	hops, _ := parseHops(&request.Request.Header)
 	if hops <= 0 {
 		response.WriteHeader(http.StatusNotFound)
 		return
@@ -191,7 +191,8 @@ func (n *Node) putValue(request *restful.Request, response *restful.Response) {
 	n.store.Put(key, value)
 	log.Printf("wrote key '%s' and associated value to node '%d'", key, n.ID)
 
-	visited, hops, err := n.parse(request.Request)
+	visited, _ := parseVisited(&request.Request.Header)
+	hops, _ := parseHops(&request.Request.Header)
 	if hops <= 0 {
 		response.WriteHeader(http.StatusOK)
 		return
@@ -203,7 +204,6 @@ func (n *Node) putValue(request *restful.Request, response *restful.Response) {
 		response.WriteHeader(http.StatusOK)
 		return
 	}
-
 
 	address := n.registry.Get(next)
 	statusCode, body, err := n.putValueRemote(address, key, value, visited, hops)
@@ -357,24 +357,4 @@ func (n *Node) bestMatch(s string, excludes []int) int {
 	}
 
 	return last
-}
-
-
-
-func (n *Node) parse(request *http.Request) ([]int, int, error) {
-	v := request.Header.Get(visitedHeader)
-	s := strings.Split(v, ",")
-	visited := make([]int, len(s))
-	for _, id := range s {
-		n, err := strconv.Atoi(id)
-		if err != nil {
-			visited = append(visited, n)
-		}
-	}
-
-	hops, err := strconv.Atoi(request.Header.Get(hopsHeader))
-	if err != nil {
-		return make([]int, 0), 0, err
-	}
-	return visited, hops, nil
 }

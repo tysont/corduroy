@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"io/ioutil"
 	"net/http"
+	"strings"
 )
 
 func buildLocalUri(port int) string {
@@ -82,4 +83,27 @@ func send(verb string, uri string, body string, visited []int, hops int) (int, s
 	}
 
 	return response.StatusCode, string(b2), nil
+}
+
+func parseVisited(headers *http.Header) ([]int, error) {
+	v := headers.Get(visitedHeader)
+	s := strings.Split(v, ",")
+	visited := make([]int, len(s))
+	for _, id := range s {
+		n, err := strconv.Atoi(id)
+		if err != nil {
+			return visited, err
+		} else {
+			visited = append(visited, n)
+		}
+	}
+	return visited, nil
+}
+
+func parseHops(headers *http.Header) (int, error) {
+	hops, err := strconv.Atoi(headers.Get(hopsHeader))
+	if err != nil {
+		return 0, err
+	}
+	return hops, nil
 }
