@@ -2,6 +2,7 @@ package corduroy
 
 import (
 	"sync"
+	"math/rand"
 )
 
 type MemoryStore struct {
@@ -29,6 +30,14 @@ func (ms *MemoryStore) Put(key string, value string) {
 
 func (ms *MemoryStore) Get(key string) string {
 	return ms.values[key]
+}
+
+func (ms *MemoryStore) GetRandomKey() string {
+	ms.indexMux.Lock()
+	r := rand.Int() % ms.Size()
+	key := ms.index[r]
+	ms.indexMux.Unlock()
+	return key
 }
 
 func (ms *MemoryStore) GetKeys(first int, length int) []string {

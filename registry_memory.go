@@ -1,6 +1,9 @@
 package corduroy
 
-import "sync"
+import (
+	"sync"
+	"math/rand"
+)
 
 type MemoryRegistry struct {
 	nodes    map[int]string
@@ -19,9 +22,11 @@ func NewMemoryRegistry() *MemoryRegistry{
 
 func (mr *MemoryRegistry) Put(id int, address string) {
 	mr.indexMux.Lock()
-	mr.nodes[id] = address
-	mr.reverseIndex[id] = len(mr.index)
-	mr.index = append(mr.index, id)
+	if !mr.Contains(id) {
+		mr.nodes[id] = address
+		mr.reverseIndex[id] = len(mr.index)
+		mr.index = append(mr.index, id)
+	}
 	mr.indexMux.Unlock()
 }
 
@@ -47,16 +52,26 @@ func (mr *MemoryRegistry) GetIDs(first int, length int) []int {
 	return keys
 }
 
+func (mr *MemoryRegistry) GetRandomID() int {
+	mr.indexMux.Lock()
+	r := rand.Int() % mr.Size()
+	id := mr.index[r]
+	mr.indexMux.Unlock()
+	return id
+}
+
 func (mr *MemoryRegistry) GetAll() map[int]string {
 	return mr.nodes
 }
 
 func (mr *MemoryRegistry) Delete(id int) {
 	mr.indexMux.Lock()
-	delete(mr.nodes, id)
-	n := mr.reverseIndex[id]
-	mr.index = append(mr.index[:n], mr.index[n+1:]...)
-	delete(mr.reverseIndex, id)
+	if mr.Contains(id) {
+		delete(mr.nodes, id)
+		n := mr.reverseIndex[id]
+		mr.index = append(mr.index[:n], mr.index[n+1:]...)
+		delete(mr.reverseIndex, id)
+	}
 	mr.indexMux.Unlock()
 }
 

@@ -5,7 +5,6 @@ import (
 	"github.com/emicklei/go-restful"
 	"io/ioutil"
 	"log"
-	"math/rand"
 	"net/http"
 	"net/url"
 	"sort"
@@ -67,16 +66,25 @@ func (n *Node) Start(port int) {
 			log.Printf("server error at node '%d': '%s'", n.ID, err)
 		}
 	}()
-
 	n.registry.Put(n.ID, n.Address)
-	syncTicker := time.NewTicker(time.Second * syncFrequencySeconds)
+
+	syncNodeTicker := time.NewTicker(time.Second * syncFrequencySeconds)
 	go func() {
 		for {
-			<-syncTicker.C
+			<-syncNodeTicker.C
 			n.syncRandomNodeRemote()
 		}
 	}()
-	n.tickers = append(n.tickers, syncTicker)
+	n.tickers = append(n.tickers, syncNodeTicker)
+
+	syncValueTicker := time.NewTicker(time.Second * syncFrequencySeconds)
+	go func() {
+		for {
+			<- syncValueTicker.C
+			n.updateRandomValue()
+		}
+	}()
+	n.tickers = append(n.tickers, syncValueTicker)
 
 	time.Sleep(time.Millisecond * 10)
 	n.waitStart()
@@ -260,17 +268,35 @@ func (n *Node) getNodes(request *restful.Request, response *restful.Response) {
 	log.Printf("provided '%d' nodes registered to node '%d'", len(nodes), n.ID)
 }
 
-func (n *Node) syncRandomNodeRemote() {
-	nodes := n.registry.GetAll()
-	r := rand.Int() % len(nodes)
-	var id int
-	i := 0
-	for id = range nodes {
-		if i == r {
-			break
-		}
-		i++
+func (n *Node) updateRandomValue() {
+	if n.store.Size() == 0 {
+		return
 	}
+
+	key := n.store.GetRandomKey()
+	matches := n.bestMatches(key, 3, []int{})
+	best := false
+	for _, m := range matches {
+		if m == n.ID {
+			best = true
+		}
+	}
+
+	match := n.bestMatch(key, []int{n.ID})
+	address := n.registry.Get(match)
+	n.putValueRemote(address, key, n.store.Get(key), []int{n.ID}, redundantCopies)
+
+	if !best {
+		n.store.Delete(key)
+	}
+}
+
+func (n *Node) syncRandomNodeRemote() {
+	if n.registry.Size() == 0 {
+		return
+	}
+
+	id := n.registry.GetRandomID()
 	n.syncNodeRemote(id)
 }
 
