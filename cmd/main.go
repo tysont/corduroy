@@ -39,7 +39,7 @@ func main() {
 	node := corduroy.NewNode(options.Port, options.Path, store, registry)
 	node.Start()
 	if options.RemoteUri != "" {
-		node.Seed(options.RemoteUri)
+		node.Connect(options.RemoteUri)
 	}
 
 	for {

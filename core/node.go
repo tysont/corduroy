@@ -126,7 +126,7 @@ func (n *Node) waitStop() {
 	}
 }
 
-func (n *Node) Seed(uri string) {
+func (n *Node) Connect(uri string) {
 	n.registerNodeRemote(uri)
 	n.syncNodeRegistryRemote(uri)
 }
@@ -142,6 +142,12 @@ func (n *Node) pingRemote(address string) (int, string, error) {
 	return send("GET", uri, "", []int{n.ID}, 1)
 }
 
+func (n *Node) Get(key string) string {
+	value := n.store.Get(key)
+	log.Printf("retrieved value for key '%s' from node '%d'", key, n.ID)
+	return value
+}
+
 func (n *Node) getValue(request *restful.Request, response *restful.Response) {
 	key, err := url.QueryUnescape(request.PathParameter(keyPath))
 	if err != nil {
@@ -150,9 +156,8 @@ func (n *Node) getValue(request *restful.Request, response *restful.Response) {
 	}
 
 	if n.store.Contains(key) {
-		value := n.store.Get(key)
+		value := n.Get(key)
 		b := []byte(value)
-		log.Printf("retrieved value for key '%s' from node '%d'", key, n.ID)
 		response.WriteHeader(http.StatusOK)
 		response.Write(b)
 		return
@@ -193,6 +198,11 @@ func (n *Node) getValueRemote(address string, key string, visited []int, hops in
 	return send("GET", uri, "", visited, hops)
 }
 
+func (n *Node) Put(key string, value string) {
+	n.store.Put(key, value)
+	log.Printf("wrote key '%s' and associated value to node '%d'", key, n.ID)
+}
+
 func (n *Node) putValue(request *restful.Request, response *restful.Response) {
 	key := request.PathParameter(keyPath)
 	bytes, err := ioutil.ReadAll(request.Request.Body)
@@ -201,8 +211,7 @@ func (n *Node) putValue(request *restful.Request, response *restful.Response) {
 		return
 	}
 	value := string(bytes)
-	n.store.Put(key, value)
-	log.Printf("wrote key '%s' and associated value to node '%d'", key, n.ID)
+	n.Put(key, value)
 
 	visited, _ := parseVisited(&request.Request.Header)
 	hops, _ := parseHops(&request.Request.Header)
