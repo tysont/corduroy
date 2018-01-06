@@ -12,3 +12,6 @@
 
 # IntelliJ and Goland
 .idea/*
+
+# Built artifacts
+bin/*
