@@ -1,5 +1,5 @@
 # Corduroy
-A simple HTTP peer-to-peer distributed hash table inspired by [Chord](https://en.wikipedia.org/wiki/Chord_(peer-to-peer).
+A simple HTTP peer-to-peer distributed hash table inspired by [Chord](http://www.dcs.ed.ac.uk/teaching/cs3/ipse/chord-desc.html).
 
 ## Overview
 Corduroy started as a lightweight implementation of the Chord peer-to-peer hashtable that was written in Java. It has since been migrated to [Go](https://golang.org/) and some of the signature elements of Chord have been removed. Nodes in Corduroy still form a logical ring where elements are hashed to a particular node and duplicated in the prior N nodes for redudancy, but each node keeps a directory of all other known nodes and can reach the best node directly instead of relying on a finger table to forward queries. Corduroy can be embedded into another Go application or can be run as a standalone process and queried via HTTP.
