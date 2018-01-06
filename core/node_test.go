@@ -79,7 +79,7 @@ func createTestNode() *Node {
 	store := NewMemoryStore()
 	registry := NewMemoryRegistry()
 	node := NewNode(port, "/" + strconv.Itoa(port), store, registry)
-	node.Start(port)
+	node.Start()
 	return node
 }
 

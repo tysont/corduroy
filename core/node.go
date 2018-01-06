@@ -58,7 +58,7 @@ func NewNode(port int, path string, store Store, registry Registry) *Node {
 	return node
 }
 
-func (n *Node) Start(port int) {
+func (n *Node) Start() {
 	go func() {
 		log.Printf("starting server at node '%d' with address '%s'", n.ID, n.Address)
 		err := n.server.ListenAndServe()
@@ -124,6 +124,11 @@ func (n *Node) waitStop() {
 		time.Sleep(time.Millisecond * 20)
 		statusCode, _, err = n.pingRemote(n.Address)
 	}
+}
+
+func (n *Node) Seed(uri string) {
+	n.registerNodeRemote(uri)
+	n.syncNodeRegistryRemote(uri)
 }
 
 func (n *Node) ping(request *restful.Request, response *restful.Response) {
