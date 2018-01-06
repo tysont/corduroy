@@ -9,7 +9,7 @@ CONTAINER_PROJECT_PATH = /opt/go/src/${PROJECT_PATH}
 
 .PHONY: all clean test build run prepare-container test-container build-container run-container
 all: clean test build
-all-container: prepare-container test-container build-container run-container
+all-container: prepare-container test-container build-container
 
 clean:
 	rm -rf bin
